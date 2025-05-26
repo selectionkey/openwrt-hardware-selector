@@ -1,0 +1,281 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name=description content="Web app to aid in selecting hardware for OpenWrt
+  according to criteria such as memory and storage.">
+<title>Hardware Selector</title>
+<style>
+body { font-family: sans-serif }
+div.flex { display: flex; flex-wrap: wrap }
+p { margin: 2px 0 }
+p.message { width: 100%; text-align: center; margin: 30px 0 }
+p#page { margin-right: 10px }
+div.select { margin-right: 10px }
+select { width : 250px }
+label { display: inline-block; width: 180px }
+table {
+  margin-top: 10px;
+  border-top: 1px solid black;
+  border-bottom: 1px solid black;
+  border-collapse: collapse;
+  width: 100%
+}
+tr:nth-child(odd) { background-color: lightcyan }
+td { padding: 5px }
+td.t1 { padding-right: 10px }
+div.spaced {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  user-select: none; -webkit-user-select: none
+}
+div.right { display: flex; align-items: center }
+</style>
+<div class=flex>
+<p class=message>Loading...</p>
+</div>
+<p id=count></p>
+<div class=spaced>
+<button type=button id=clear>clear</button>
+<div class=right>
+<p id=page></p>
+<button type=button id=prev>◁</button>
+<button type=button id=next>▷</button>
+</div>
+</div>
+<table></table>
+<script>
+const pCount = document.querySelector('#count')
+const pPage = document.querySelector('#page')
+const clearButton = document.querySelector('#clear')
+const prevButton = document.querySelector('#prev')
+const nextButton = document.querySelector('#next')
+const table = document.querySelector('table')
+const p = document.querySelector('p')
+const topDiv = document.querySelector('div')
+let rowIndexes
+let toh
+
+function normalize(a) {
+  const b = a.map(e => e && e.length && e!=='0' && e!=='no' && e!=='No' ?
+    (Array.isArray(e) ? normalize(e) : e.match(',') ? e.split(/[ ,]+/) : e) : '-')
+  if (b.length == 1 && b[0] === '-') return '-'
+  return b
+}
+function uniq(a) {
+  const x = []
+  a.flat().forEach(e => { if (!x.includes(e)) x.push(e) })
+  return x
+}
+function uniqSorted(a) {
+  return uniq(a).sort().map(x=>[x,parseInt(x)||9999]).sort((a,b)=>a[1]-b[1]).map(x=>x[0])
+}
+
+let entries
+let keys
+let screenWidth = window.innerWidth
+let selectorList = ['brand','model','devicetype','flashmb','rammb','version','whereavailable']
+function init() {
+  toh.columns.forEach((key, j) => {
+    const col_uniq = uniq(toh.entries.map(e=>e[j]))
+    if (col_uniq.length < 100 && !key.match(/serialconnect|comment/) && !selectorList.includes(key))
+       selectorList.push(key)
+  })
+  const selectorIndexes = selectorList.map(key => toh.columns.indexOf(key))
+  const availIndex = toh.columns.indexOf('availability')
+  entries = toh.entries
+    .filter(row => row[availIndex] && !row[availIndex].match(/Discontinued/))
+    .map(row => normalize(selectorIndexes.map(j => row[j])))
+  delete toh.entries
+  keys = Object.create(null)
+  selectorList.forEach((e,n)=>keys[e] = n)
+  document.querySelector('div.spaced').addEventListener('dblclick', e => {
+    e.preventDefault()
+    e.stopPropagation()
+  })
+  topDiv.addEventListener('focusout', update)
+  window.addEventListener('resize', () => {
+    if (Math.abs(window.innerWidth - screenWidth) > 30) {
+      update()
+      screenWidth = window.innerWidth
+    }
+  })
+}
+
+function selectDiv(key, options, selections) {
+  const counts = getCounts(key, options, selections)
+  const div = document.createElement('div')
+  const label = document.createElement('label')
+  const select = document.createElement('select')
+  select.name = key
+  select.id = key
+  select.multiple = true
+  label.append(key)
+  label.setAttribute('for', key)
+  let count
+  let countBase = 0
+  if (key === 'brand') {
+    do {
+      count = 0
+      options[key].forEach(opt => { if (counts[opt] > countBase) count++ })
+      countBase++
+    } while (count > 100)
+    countBase--
+  }
+  count = 0
+  options[key].forEach((e,n) => {
+    const selected = selections[key] && selections[key].includes(e)
+    if (counts[e] > countBase || selected) {
+      count++
+      const opt = document.createElement('option')
+      opt.value =  n
+      opt.text = e + ' (' + counts[e] + ')'
+      opt.selected = selected
+      select.append(opt)
+    }
+  })
+  if (count > 1 || selections[key]) {
+    div.append(label)
+    div.append(select)
+    return [select, div]
+  }
+}
+function getRowIndexes(ignoreKey, selections) {
+  if ((!ignoreKey || !selections[ignoreKey]) && rowIndexes) return rowIndexes
+  const a = []
+  entries.forEach((row,i) => {
+    const flag = Object.keys(selections).filter(key => key !== ignoreKey).every(key => {
+      const j = keys[key]
+      const e = row[j]
+      if (Array.isArray(e))
+        return e.some(opt => selections[key].includes(opt))
+      else
+        return selections[key].includes(e)
+    })
+    if (flag) a.push(i)
+  })
+  if (!selections[ignoreKey]) rowIndexes = a
+  return a
+}
+function getCounts(key, options, selections) {
+  const counts = Object.create(null)
+  options[key].forEach(opt => counts[opt] = 0)
+  const j = keys[key]
+  getRowIndexes(key, selections).forEach(i => {
+    const e = entries[i][j]
+    if (Array.isArray(e)) e.forEach(x => counts[x]++)
+    else counts[e]++
+  })
+  return counts
+}
+
+let selectElements = Object.create(null)
+let options = Object.create(null)
+let selections = Object.create(null)
+let ntableCol = 0
+let tablen = 0
+let ntable = 0
+let rowList
+
+function update() {
+  rowIndexes = null
+  for (const key in selectElements) {
+    if (selections[key]) {
+      const displayedOpts = Array.from(selectElements[key].options)
+        .map(e => options[key][parseInt(e.value)])
+      selections[key] = selections[key].filter(opt => !displayedOpts.includes(opt))
+    }
+    const selected = Array.from(selectElements[key].selectedOptions)
+      .map(e => options[key][parseInt(e.value)])
+    if (selected.length && !selections[key]) selections[key] = []
+    selected.forEach(opt => selections[key].push(opt))
+    if (selections[key] && !selections[key].length) delete selections[key]
+  }
+  const selectors = []
+  options = Object.create(null)
+  selectorList.forEach((key,j) => {
+    let col
+    if (Object.keys(selections).length) {
+      col = getRowIndexes(key, selections).map(i => entries[i][j])
+      if (selections[key]) col = col.concat(selections[key])
+    } else {
+      col = entries.map(row => row[j])
+    }
+    const col_uniq = uniqSorted(col)
+    if (col_uniq.length < 100 || key === 'brand') {
+      selectors.push(key)
+      options[key] = col_uniq
+    } else if (selections[key]) {
+      selectors.push(key)
+      options[key] = selections[key]
+    }
+  })
+  selectElements = Object.create(null)
+  const divs = []
+  selectors.forEach(key => {
+      const x = selectDiv(key, options, selections)
+      if (x) {
+        const [select, div] = x
+        selectElements[key] = select
+        divs.push(div)
+      }
+  })
+  topDiv.innerHTML = ''
+  const selectDivs = []
+  const nCol = Math.floor(window.innerWidth/450) || 1
+  for (let n=0; n<nCol; n++) {
+    const div = document.createElement('div')
+    div.setAttribute('class', 'select')
+    selectDivs.push(div)
+    topDiv.append(div)
+  }
+  const nRow = Math.ceil(divs.length/nCol)
+  divs.forEach((e,n) => selectDivs[Math.floor(n/nRow)].append(e))
+  rowList = getRowIndexes(null, selections)
+  pCount.textContent = 'count: ' + rowList.length
+  ntableCol = Math.max(2, Math.floor(window.innerWidth/180)) - 1
+  ntable = Math.ceil(rowList.length/ntableCol)
+  tablen = 0
+  updateTable()
+}
+function updateTable() {
+  pPage.textContent = tablen + 1 + '/' + ntable
+  table.textContent = ''
+  selectorList.forEach((key, j) => {
+    const tr = document.createElement('tr')
+    const t1 = document.createElement('td')
+    t1.setAttribute('class', 't1')
+    t1.append(key)
+    tr.append(t1)
+    const i = tablen * ntableCol
+    for (let n=0; n < Math.min((rowList.length - i), ntableCol); n++) {
+      const td = document.createElement('td')
+      const e = entries[rowList[i + n]][j]
+      td.append(Array.isArray(e) ? e.join(', ') : e)
+      tr.append(td)
+    }
+    table.append(tr)
+  })
+}
+function clear() {
+  selections = Object.create(null)
+  selectElements = Object.create(null)
+  options = Object.create(null)
+  update()
+}
+clearButton.addEventListener('click', clear)
+prevButton.addEventListener('click', () => {
+  tablen = (tablen + ntable - 1) % ntable; updateTable()
+})
+nextButton.addEventListener('click', () => {
+  tablen = (tablen + 1) % ntable; updateTable()
+})
+fetch('https://openwrt.org/toh.json')
+ .then(x => {
+   if (!x.ok) throw 'HTTP: ' + x.status
+   return x.json();
+ })
+ .then(x => { toh = x; init(); update() })
+ .catch(error => p.textContent = error)
+</script>
