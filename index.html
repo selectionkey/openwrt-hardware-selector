@@ -2,7 +2,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name=description content="Web app to aid in selecting hardware for OpenWrt
-  according to criteria such as memory and storage.">
+  according to criteria such as memory and storage">
 <title>Hardware Selector</title>
 <style>
 body { font-family: sans-serif }
@@ -79,6 +79,22 @@ let keys
 let screenWidth = window.innerWidth
 let selectorList = ['brand','model','devicetype','flashmb','rammb','version','whereavailable']
 function init() {
+  let j = toh.columns.indexOf("powersupply")
+  toh.columns[j] = "PoE"
+  toh.entries.forEach(row => {
+    const e = row[j]
+    let e2 = []
+    if (e) {
+      let r
+      if (r = e.match(/802.3[a-zA-Z/]*/g)) e2 = r
+      if (r = e.match(/PoE[^),: ]+/ig)) e2 = e2.concat(r)
+      if (r = e.match(/passive/i)) e2 = e2.concat('passive')
+      if (!e2.length) e2 = e.match(/PoE/i) ? 'other' : '-'
+    } else {
+      e2 = '-'
+    }
+    row[j] = e2
+  })
   toh.columns.forEach((key, j) => {
     const col_uniq = uniq(toh.entries.map(e=>e[j]))
     if (col_uniq.length < 100 && !key.match(/serialconnect|comment/) && !selectorList.includes(key))
