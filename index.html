@@ -33,6 +33,7 @@ div.spaced {
 }
 div.right { display: flex; align-items: center }
 </style>
+<pre></pre>
 <div class=flex>
 <p class=message>Loading...</p>
 </div>
@@ -48,6 +49,7 @@ div.right { display: flex; align-items: center }
 <table></table>
 <a href="https://starglobe.app">starglobe.app</a>
 <script>
+const pre = document.querySelector('pre')
 const pCount = document.querySelector('#count')
 const pPage = document.querySelector('#page')
 const clearButton = document.querySelector('#clear')
@@ -58,6 +60,19 @@ const p = document.querySelector('p')
 const topDiv = document.querySelector('div')
 let rowIndexes
 let toh
+
+function setQuery(selections) {
+  if (Object.keys(selections).length) {
+    const params = new URLSearchParams()
+    for (const key in selections) {
+      params.set(key,selections[key].join())
+    }
+    const url = window.location.pathname + '?' + params
+    history.replaceState(null, '', url)
+  } else {
+    history.replaceState(null, '', window.location.pathname)
+  }
+}
 
 function normalize(a) {
   const b = a.map(e => e && e.length && e!=='0' && e!=='no' && e!=='No' ?
@@ -112,7 +127,7 @@ function init() {
     e.preventDefault()
     e.stopPropagation()
   })
-  topDiv.addEventListener('focusout', update)
+  topDiv.addEventListener('focusout', () => update())
   window.addEventListener('resize', () => {
     if (Math.abs(window.innerWidth - screenWidth) > 30) {
       update()
@@ -196,19 +211,29 @@ let tablen = 0
 let ntable = 0
 let rowList
 
-function update() {
+function update(init) {
   rowIndexes = null
-  for (const key in selectElements) {
-    if (selections[key]) {
-      const displayedOpts = Array.from(selectElements[key].options)
-        .map(e => options[key][parseInt(e.value)])
-      selections[key] = selections[key].filter(opt => !displayedOpts.includes(opt))
+  if (init) {
+    if (window.location.search) {
+      const params = new URLSearchParams(window.location.search)
+      for ([key, value] of params) {
+        selections[key] = value.split(',')
+      }
     }
-    const selected = Array.from(selectElements[key].selectedOptions)
-      .map(e => options[key][parseInt(e.value)])
-    if (selected.length && !selections[key]) selections[key] = []
-    selected.forEach(opt => selections[key].push(opt))
-    if (selections[key] && !selections[key].length) delete selections[key]
+  } else {
+    for (const key in selectElements) {
+      if (selections[key]) {
+        const displayedOpts = Array.from(selectElements[key].options)
+          .map(e => options[key][parseInt(e.value)])
+        selections[key] = selections[key].filter(opt => !displayedOpts.includes(opt))
+      }
+      const selected = Array.from(selectElements[key].selectedOptions)
+        .map(e => options[key][parseInt(e.value)])
+      if (selected.length && !selections[key]) selections[key] = []
+      selected.forEach(opt => selections[key].push(opt))
+      if (selections[key] && !selections[key].length) delete selections[key]
+    }
+    setQuery(selections)
   }
   const selectors = []
   options = Object.create(null)
@@ -294,6 +319,6 @@ fetch('https://openwrt.org/toh.json')
    if (!x.ok) throw 'HTTP: ' + x.status
    return x.json();
  })
- .then(x => { toh = x; init(); update() })
+ .then(x => { toh = x; init(); update(true) })
  .catch(error => p.textContent = error)
 </script>
