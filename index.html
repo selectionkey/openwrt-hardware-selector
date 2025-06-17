@@ -205,7 +205,6 @@ function getCounts(key, options, selections) {
 
 let selectElements = Object.create(null)
 let options = Object.create(null)
-let selections = Object.create(null)
 let ntableCol = 0
 let tablen = 0
 let ntable = 0
@@ -213,6 +212,7 @@ let rowList
 
 function update(init) {
   rowIndexes = null
+  const selections = Object.create(null)
   if (init) {
     if (window.location.search) {
       const params = new URLSearchParams(window.location.search)
@@ -222,16 +222,9 @@ function update(init) {
     }
   } else {
     for (const key in selectElements) {
-      if (selections[key]) {
-        const displayedOpts = Array.from(selectElements[key].options)
-          .map(e => options[key][parseInt(e.value)])
-        selections[key] = selections[key].filter(opt => !displayedOpts.includes(opt))
-      }
-      const selected = Array.from(selectElements[key].selectedOptions)
-        .map(e => options[key][parseInt(e.value)])
-      if (selected.length && !selections[key]) selections[key] = []
+      const selected = Array.from(selectElements[key].selectedOptions).map(e => options[key][parseInt(e.value)])
+      if (selected.length) selections[key] = []
       selected.forEach(opt => selections[key].push(opt))
-      if (selections[key] && !selections[key].length) delete selections[key]
     }
     setQuery(selections)
   }
@@ -302,7 +295,6 @@ function updateTable() {
   })
 }
 function clear() {
-  selections = Object.create(null)
   selectElements = Object.create(null)
   options = Object.create(null)
   update()
